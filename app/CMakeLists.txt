@@ -1,20 +1,31 @@
 cmake_minimum_required(VERSION 3.10.2)
-project("native_NEON")
+project("native_neon")
 
 add_library(
-        native_lib
+        native-lib
         SHARED
         src/main/cpp/native-lib.c
 )
 
 find_library(log-lib log)
 
-# Bật tối ưu hóa O3 + NEON (arm64 NEON mặc định)
-target_compile_options(native-lib PRIVATE -O3)
+# ABI-specific optimization flags
+if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+    message(STATUS ">>> Using -mfpu=neon for armeabi-v7a")
+    target_compile_options(native-lib PRIVATE -O3 -mfpu=neon)
+
+elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    message(STATUS ">>> ARM64 has NEON by default, no -mfpu needed")
+    target_compile_options(native-lib PRIVATE -O3)
+
+else()
+    message(STATUS ">>> Non-ARM arch, fallback -O3")
+    target_compile_options(native-lib PRIVATE -O3)
+endif()
 
 target_link_libraries(
         native-lib
         ${log-lib}
-        jnigraphics     # <-- bắt buộc để dùng AndroidBitmap_*
-        android         # <-- khuyến nghị, cần thiết cho vài API của Android NDK
+        jnigraphics
+        android
 )
