@@ -2,78 +2,67 @@
 #include <android/bitmap.h>
 #include <android/log.h>
 #include <stdint.h>
-#include <string.h>
-
-#ifdef __ARM_NEON
-#include <arm_neon.h>
-#endif
 
 #define LOG_TAG "native-neon"
 #define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 /*
- * Hàm duy nhất Java gọi:
- * Java_com_example_native_1neon_NativeLib_grayScaleNeon
+ * Hàm native được Java gọi:
+ * NativeLib.grayScaleNeon(Bitmap bitmap)
  */
 JNIEXPORT jint JNICALL
-Java_com_example_native_1neon_NativeLib_grayScaleNeon(JNIEnv *env, jclass clazz, jobject bitmap) {
+Java_com_example_native_1neon_NativeLib_grayScaleNeon(
+        JNIEnv *env,
+        jclass clazz,
+        jobject bitmap) {
 
     AndroidBitmapInfo info;
     void *pixels = NULL;
-    int ret;
 
-    if ((ret = AndroidBitmap_getInfo(env, bitmap, &info)) != ANDROID_BITMAP_RESULT_SUCCESS) {
-        ALOGE("AndroidBitmap_getInfo failed: %d", ret);
+    // Lấy thông tin bitmap
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        ALOGE("AndroidBitmap_getInfo failed");
         return -1;
     }
 
+    // Chỉ hỗ trợ ARGB_8888
     if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
-        ALOGE("Only RGBA_8888 supported. Format=%d", info.format);
+        ALOGE("Unsupported bitmap format");
         return -2;
     }
 
-    if ((ret = AndroidBitmap_lockPixels(env, bitmap, &pixels)) != ANDROID_BITMAP_RESULT_SUCCESS) {
-        ALOGE("AndroidBitmap_lockPixels failed: %d", ret);
+    // Khóa pixel để truy cập trực tiếp
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        ALOGE("AndroidBitmap_lockPixels failed");
         return -3;
     }
 
     uint8_t *base = (uint8_t *) pixels;
-    const int width = info.width;
-    const int height = info.height;
-    const int stride = info.stride;
-    const int bpp = 4;
+    int width = info.width;
+    int height = info.height;
+    int stride = info.stride;
 
-#ifdef __ARM_NEON
-    ALOGI("Running NEON optimized grayscale");
+    // Duyệt từng pixel và chuyển sang grayscale
     for (int y = 0; y < height; y++) {
         uint8_t *row = base + y * stride;
         for (int x = 0; x < width; x++) {
-            uint8_t *px = row + x * bpp;
-            uint8_t B = px[0];
-            uint8_t G = px[1];
-            uint8_t R = px[2];
-            uint32_t yv = (R * 77u + G * 150u + B * 29u) >> 8;
-            uint8_t yy = (uint8_t) yv;
-            px[0] = px[1] = px[2] = yy;
+            uint8_t *px = row + x * 4; // ARGB_8888
+
+            uint8_t b = px[0];
+            uint8_t g = px[1];
+            uint8_t r = px[2];
+
+            // Công thức grayscale (integer, nhanh)
+            uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8);
+
+            px[0] = gray;
+            px[1] = gray;
+            px[2] = gray;
+            // px[3] = alpha giữ nguyên
         }
     }
-#else
-    ALOGI("Running fallback C grayscale (no NEON, emulator)");
-    for (int y = 0; y < height; y++) {
-        uint8_t *row = base + y * stride;
-        for (int x = 0; x < width; x++) {
-            uint8_t *px = row + x * bpp;
-            uint8_t B = px[0];
-            uint8_t G = px[1];
-            uint8_t R = px[2];
-            uint32_t yv = (R * 77u + G * 150u + B * 29u) >> 8;
-            uint8_t yy = (uint8_t) yv;
-            px[0] = px[1] = px[2] = yy;
-        }
-    }
-#endif
 
     AndroidBitmap_unlockPixels(env, bitmap);
-    return 0;
+    return 0; // SUCCESS
 }
